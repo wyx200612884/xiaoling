@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>小玲 (XiaoLing) · 本地智能体对话助手</title>
+    <style>
+          * { box-sizing: border-box; margin: 0; padding: 0; }
+          body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; height: 100vh; display: flex; background-color: #f4f6f8; color: #333; }
+          #sidebar { width: 320px; background: #ffffff; border-right: 1px solid #e1e4e8; display: flex; flex-direction: column; padding: 20px; box-shadow: 2px 0 8px rgba(0,0,0,0.03); }
+          #sidebar h2 { font-size: 1.25rem; font-weight: 600; color: #1a1a1a; margin-bottom: 20px; display: flex; align-items: center; gap: 8px; }
+          .form-group { margin-bottom: 16px; }
+          .form-group label { display: block; font-size: 0.85rem; font-weight: 600; color: #555; margin-bottom: 6px; }
+          .form-group select, .form-group input, .form-group textarea { width: 100%; padding: 8px 12px; font-size: 0.9rem; border: 1px solid #d1d5db; border-radius: 6px; outline: none; transition: border-color 0.2s; }
+          .form-group select:focus, .form-group input:focus, .form-group textarea:focus { border-color: #2563eb; }
+          .form-group textarea { height: 110px; resize: vertical; }
+          .btn-clear { background-color: #ef4444; color: white; border: none; padding: 10px; border-radius: 6px; font-weight: 600; cursor: pointer; width: 100%; margin-top: auto; transition: background 0.2s; }
+          .btn-clear:hover { background-color: #dc2626; }
+          #chat-container { flex: 1; display: flex; flex-direction: column; height: 100vh; }
+          #chat-header { height: 60px; background: #ffffff; border-bottom: 1px solid #e1e4e8; display: flex; align-items: center; justify-content: space-between; padding: 0 24px; font-weight: 600; font-size: 1.1rem; }
+          #messages { flex: 1; overflow-y: auto; padding: 24px; display: flex; flex-direction: column; gap: 16px; }
+          .message { max-width: 80%; padding: 12px 16px; border-radius: 12px; line-height: 1.5; font-size: 0.95rem; white-space: pre-wrap; word-break: break-word; }
+          .message.user { align-self: flex-end; background-color: #2563eb; color: white; border-bottom-right-radius: 2px; }
+          .message.assistant { align-self: flex-start; background-color: #ffffff; border: 1px solid #e1e4e8; color: #1f2937; border-bottom-left-radius: 2px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+          #input-area { background: #ffffff; border-top: 1px solid #e1e4e8; padding: 16px 24px; display: flex; gap: 12px; }
+          #input-area textarea { flex: 1; border: 1px solid #d1d5db; border-radius: 8px; padding: 10px 14px; font-size: 0.95rem; outline: none; height: 50px; resize: none; font-family: inherit; }
+          #input-area textarea:focus { border-color: #2563eb; }
+          #send-btn { background-color: #2563eb; color: white; border: none; padding: 0 20px; border-radius: 8px; font-weight: 600; cursor: pointer; transition: background 0.2s; }
+          #send-btn:hover { background-color: #1d4ed8; }
+          .status-badge { font-size: 0.8rem; padding: 4px 8px; border-radius: 12px; background: #e5e7eb; color: #374151; font-weight: normal; }
+        </style>
+  </head>
+  <body>
+      <div id="sidebar">
+            <h2>🤖 小玲 (XiaoLing) 配置</h2>
+          <div class="form-group">
+                <label for="backend-type">后端模式切换</label>label>
+                <select id="backend-type" onchange="onBackendChange()">
+                        <option value="python">本地 Python 后端</option>option>
+                        <option value="ollama">本地 Ollama 接口</option>option>
+                </select>select>
+          </div>div>
+          <div class="form-group">
+                <label for="base-url">API 服务地址</label>label>
+                <input type="text" id="base-url" value="http://localhost:8000">
+          </div>div>
+          <div class="form-group">
+                <label for="model-name">型名称</label>label>
+                <input type="text" id="model-name" value="xiaoling-local">
+          </div>div>
+          <div class="form-group">
+                <label for="system-prompt">人设提示词 (System Prompt)</label>label>
+                <textarea id="system-prompt">你是小玲 (XiaoLing)，一位聪明、贴心且高效的本地智能体对话助手。</textarea>
+          </div>div>
+          <button class="btn-clear" onclick="clearMemory()">🧹 清空记忆</button>button>
+      </div>div>
+  
+    <div id="chat-container">
+        <div id="chat-header">
+              <span>玲 (XiaoLing) · 本地智能体对话助手</span>
+              <span id="status" class="status-badge">就绪</span>
+        </div>div>
+        <div id="messages">
+              <div class="message assistant">你好！我是小玲 (XiaoLing)，你的能体对话助手。请问今天有什么我可以帮你的</div>div>
+        </div>div>
+        <div id="input-area">
+              <textarea id="user-input" placeholder="输入消息，Press Enter 发送 (Shift+Enter 换行)..." onkeydown="handleKeyDown(event)"></textarea>
+              <button id="send-btn" onclick="sendMessage()">发送</button>button>
+        </div>div>
+    </div>div>
+  
+    <script>
+          let chatHistory = [];
+
+          function onBackendChange() {
+                  const type = document.getElementById('backend-type').value;
+                  const baseUrlInput = document.getElementById('base-url');
+                  const modelInput = document.getElementById('model-name');
+                  if (type === 'ollama') {
+                            baseUrlInput.value = 'http://localhost:11434';
+                            modelInput.value = 'qwen2.5';
+                  } else {
+                            baseUrlInput.value = 'http://localhost:8000';
+                            modelInput.value = 'xiaoling-local';
+                  }
+          }
+
+          function clearMemory() {
+                  chatHistory = [];
+                  const messagesDiv = document.getElementById('messages');
+                  messagesDiv.innerHTML = '<div class="message assistant">记忆已清空！我是小玲，请问有什么我可以帮你的？</div>';
+          }
+
+          function handleKeyDown(event) {
+                  if (event.key === 'Enter' && !event.shiftKey) {
+                            event.preventDefault();
+                            sendMessage();
+                  }
+          }
+
+          async function sendMessage() {
+                  const inputEl = document.getElementById('user-input');
+                  const text = inputEl.value.trim();
+                  if (!text) return;
+
+                  const messagesDiv = document.getElementById('messages');
+                  const backendType = document.getElementById('backend-type').value;
+                  const baseUrl = document.getElementById('base-url').value.replace(/\/$/, '');
+                  const model = document.getElementById('model-name').value;
+                  const systemPrompt = document.getElementById('system-prompt').value;
+
+                  const userMsgDiv = document.createElement('div');
+                  userMsgDiv.className = 'message user';
+                  userMsgDiv.textContent = text;
+                  messagesDiv.appendChild(userMsgDiv);
+
+                  chatHistory.push({ role: 'user', content: text });
+                  inputEl.value = '';
+                  messagesDiv.scrollTop = messagesDiv.scrollHeight;
+
+                  const assistantMsgDiv = document.createElement('div');
+                  assistantMsgDiv.className = 'message assistant';
+                  assistantMsgDiv.textContent = '小玲正在思考中...';
+                  messagesDiv.appendChild(assistantMsgDiv);
+                  messagesDiv.scrollTop = messagesDiv.scrollHeight;
+
+                  document.getElementById('status').textContent = '响应中...';
+
+                  const payloadMessages = [];
+                  if (systemPrompt) {
+                            payloadMessages.push({ role: 'system', content: systemPrompt });
+                  }
+                  payloadMessages.push(...chatHistory);
+
+                  try {
+                            let endpoint = '';
+                            if (backendType === 'ollama') {
+                                        endpoint = `${baseUrl}/api/chat`;
+                            } else {
+                                        endpoint = `${baseUrl}/v1/chat/completions`;
+                            }
+
+                            const response = await fetch(endpoint, {
+                                        method: 'POST',
+                                        headers: { 'Content-Type': 'application/json' },
+                                        body: JSON.stringify({
+                                                      model: model,
+                                                      messages: payloadMessages,
+                                                      stream: false
+                                        })
+                            });
+
+                            if (!response.ok) {
+                                        throw new Error(`HTTP Error: ${response.status}`);
+                            }
+
+                            const data = await response.json();
+                            let reply = '';
+                            if (backendType === 'ollama') {
+                                        reply = data.message ? data.message.content : (data.response || JSON.stringify(data));
+                            } else {
+                                        reply = data.choices && data.choices[0] ? data.choices[0].message.content : JSON.stringify(data);
+                            }
+
+                            assistantMsgDiv.textContent = reply;
+                            chatHistory.push({ role: 'assistant', content: reply });
+                            document.getElementById('status').textContent = '就绪';
+                  } catch (err) {
+                            assistantMsgDiv.textContent = `[错误] 无法连接到服务: ${err.message}`;
+                            document.getElementById('status').textContent = '连接失败';
+                  }
+                  messagesDiv.scrollTop = messagesDiv.scrollHeight;
+          }
+    </script>
+  </body>
+</html>html>
+    </script></span></h2>
+  </body>
+    </style></title>
+  </head>
